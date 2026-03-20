@@ -10,6 +10,7 @@ import (
 // UserRepository manages user records.
 type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*model.User, error)
+	GetByID(ctx context.Context, id string) (*model.User, error)
 	CreateUser(ctx context.Context, user *model.User) error
 }
 

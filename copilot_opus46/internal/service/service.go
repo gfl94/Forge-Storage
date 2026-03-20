@@ -82,11 +82,10 @@ func (s *AuthService) GetSession(ctx context.Context, sessionID string) (*model.
 	// Touch the session to update last seen
 	_ = s.sessions.Touch(ctx, sessionID)
 
-	user, err := s.users.GetByUsername(ctx, "") // we need by ID
+	user, err := s.users.GetByID(ctx, session.UserID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("lookup user: %w", err)
 	}
-	// Since we don't have GetByID, we embed user info in the session context
 	return session, user, nil
 }
 

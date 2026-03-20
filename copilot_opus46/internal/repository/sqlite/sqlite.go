@@ -113,6 +113,24 @@ func (s *DB) GetByUsername(ctx context.Context, username string) (*model.User, e
 	return &u, nil
 }
 
+// GetByID returns the user with the given ID, or nil if not found.
+func (s *DB) GetByID(ctx context.Context, id string) (*model.User, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, username, password_hash, created_at FROM users WHERE id = ?`, id)
+
+	var u model.User
+	var createdAt string
+	err := row.Scan(&u.ID, &u.Username, &u.PasswordHash, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
+	u.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return &u, nil
+}
+
 // CreateUser inserts a new user record.
 func (s *DB) CreateUser(ctx context.Context, user *model.User) error {
 	_, err := s.db.ExecContext(ctx,

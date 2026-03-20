@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Gateway</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login screen -->
+    <div id="login-screen" class="screen">
+        <div class="login-card">
+            <h1>Storage Gateway</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary" id="login-btn">Sign In</button>
+                <div id="login-error" class="error-message" hidden></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main app screen -->
+    <div id="app-screen" class="screen" hidden>
+        <header class="app-header">
+            <h1 class="app-title">Storage Gateway</h1>
+            <div class="header-actions">
+                <button id="logout-btn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <nav class="breadcrumb" id="breadcrumb"></nav>
+
+        <div class="toolbar">
+            <button id="upload-btn" class="btn btn-primary">
+                <span class="icon">↑</span> Upload File
+            </button>
+            <button id="refresh-btn" class="btn btn-secondary">
+                <span class="icon">↻</span> Refresh
+            </button>
+        </div>
+
+        <div id="file-list" class="file-list">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="col-name">Name</th>
+                        <th class="col-size">Size</th>
+                        <th class="col-type">Type</th>
+                        <th class="col-modified">Modified</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="file-list-body"></tbody>
+            </table>
+        </div>
+
+        <div id="empty-message" class="empty-message" hidden>
+            <p>This folder is empty.</p>
+        </div>
+
+        <div id="loading" class="loading" hidden>
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+
+        <!-- Upload modal -->
+        <div id="upload-modal" class="modal" hidden>
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+                <h2>Upload File</h2>
+                <input type="file" id="file-input" multiple>
+                <div id="upload-progress" hidden>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <p id="upload-status"></p>
+                </div>
+                <div class="modal-actions">
+                    <button id="upload-start-btn" class="btn btn-primary" disabled>Upload</button>
+                    <button id="upload-cancel-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview modal -->
+        <div id="preview-modal" class="modal" hidden>
+            <div class="modal-overlay"></div>
+            <div class="modal-content preview-content">
+                <div class="preview-header">
+                    <h2 id="preview-title"></h2>
+                    <button id="preview-close-btn" class="btn btn-secondary">✕</button>
+                </div>
+                <div id="preview-body" class="preview-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="auth.js"></script>
+    <script src="browser.js"></script>
+    <script src="upload.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+[Unit]
+Description=Storage API service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=storage-api
+Group=storage-api
+WorkingDirectory=/opt/storage
+EnvironmentFile=/etc/storage-api/storage-api.env
+ExecStart=/opt/storage/bin/storage-api
+Restart=on-failure
+RestartSec=3
+
+# Journald logging
+StandardOutput=journal
+StandardError=journal
+
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/storage-api /var/cache/storage-api
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

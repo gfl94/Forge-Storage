@@ -39,7 +39,7 @@ The system has five logical parts:
 4. Metadata database
 5. Object storage provider
 
-Nginx fronts the Go service. The Go service serves the UI and APIs. The Go service uses SQLite for auth/session/metadata state in the MVP. File objects live in Azure Blob Storage first. The browser should transfer large file payloads directly to object storage using short-lived signed URLs issued by the Go service.
+Nginx fronts the Go service and also serves static frontend assets. The Go service primarily serves JSON APIs. The Go service uses SQLite for auth/session/metadata state in the MVP, with file metadata cache treated as a core feature. File objects live in Azure Blob Storage first. The browser should transfer large file payloads directly to object storage using short-lived signed URLs issued by the Go service.
 
 ## 5. Why this shape fits the small Ubuntu host
 
@@ -49,7 +49,7 @@ The Ubuntu machine is resource-constrained, so the design must avoid turning it 
 - Nginx continues to do the edge work it already does today
 - Object storage handles bulk upload/download traffic
 - SQLite avoids another always-on service
-- The frontend is lightweight and mostly server-rendered
+- The frontend is lightweight and served as static assets by Nginx
 
 This keeps RAM, CPU, and operational complexity low.
 
@@ -57,14 +57,15 @@ This keeps RAM, CPU, and operational complexity low.
 
 ### 6.1 Approach
 
-Use server-rendered HTML templates from the Go application, enhanced with small JavaScript modules where needed.
+Use a lightweight static frontend served by Nginx, with the browser talking to the Go backend over JSON APIs.
 
-This is preferred over a heavy SPA for MVP because:
+This is preferred over server-rendered templates and over a heavy SPA for MVP because:
 
-- startup and deployment are simpler
-- frontend memory/runtime overhead stays low
+- it keeps backend/frontend boundaries clean
+- static assets are cheap for Nginx to serve
 - the product needs simple workflows first
-- the team can delay client-side complexity until real requirements justify it
+- the team can delay React-level complexity until real requirements justify it
+- the backend can evolve into a stable API platform for a future modern UI
 
 ### 6.2 Frontend responsibilities
 
@@ -74,14 +75,15 @@ This is preferred over a heavy SPA for MVP because:
 - Submit upload form and show progress
 - Trigger downloads via signed URLs
 - Show breadcrumbs and metadata
+- Call JSON APIs for listing, metadata, and upload/download initiation
 - Display errors returned by the backend
 
 ### 6.3 Frontend implementation style
 
-- HTML templates rendered by Go
-- Minimal CSS, ideally one small static asset bundle
-- Small JavaScript for upload progress, preview refresh, and partial page updates if desired
-- Avoid a client-side state store for MVP
+- Static HTML/CSS/JS assets, ideally with a very small build output
+- Plain TypeScript/JavaScript first, with htmx-style progressive enhancement as an acceptable middle ground if desired
+- Keep the UI API-first so React can replace the first frontend later without changing backend contracts
+- Avoid a heavy client-side state store for MVP
 
 ### 6.4 Frontend UX for MVP
 
@@ -95,6 +97,19 @@ This is preferred over a heavy SPA for MVP because:
 - Upload action
 - Download action
 
+### 6.5 Future frontend evolution
+
+The initial frontend should not lock the project away from modern UI frameworks.
+
+Recommended direction:
+
+- define stable JSON contracts now
+- keep session/auth behavior backend-controlled
+- let Nginx serve versioned static assets
+- if the UI later grows more interactive, move to a React/Vite frontend without requiring a backend rewrite
+
+This makes the MVP cheap while preserving a clean path to a richer future UI.
+
 ## 7. Backend architecture
 
 ### 7.1 Core service responsibilities
@@ -107,10 +122,12 @@ Responsibilities:
 - normalize and validate paths
 - list folders/files
 - retrieve and compose metadata
+- maintain and serve file metadata cache entries
 - generate upload/download/view signed URLs
 - apply authorization and policy rules
 - persist lightweight metadata and session state
 - translate internal operations to provider-specific APIs
+- expose health/readiness endpoints and structured operational logs
 
 ### 7.2 Backend design principles
 
@@ -119,14 +136,15 @@ Responsibilities:
 - no direct provider SDK usage from handlers
 - no direct SQL from handlers
 - no large file streaming through the app unless absolutely necessary
+- API-first contracts so frontend technology can change independently
 
 ### 7.3 Suggested internal layers
 
-- HTTP layer: handlers, request parsing, auth/session extraction
+- HTTP layer: `chi` router, handlers, request parsing, auth/session extraction, health endpoints
 - Service layer: application logic for browse, preview, upload, download
 - Storage provider layer: object storage abstraction and provider implementations
 - Metadata repository layer: database abstraction and concrete persistence implementation
-- View layer: HTML template rendering
+- Static frontend served outside the app by Nginx
 
 ## 8. Storage provider abstraction
 
@@ -170,14 +188,14 @@ SQLite is good for MVP, but future growth may require a stronger metadata databa
 
 ### 9.2 What metadata belongs in the database
 
-MVP database contents should stay small and purposeful:
+MVP database contents should stay small and purposeful, but file metadata cache is a core feature rather than an afterthought:
 
 - users
 - password hashes
 - sessions or auth tokens
 - saved application settings
-- optional cached directory metadata
-- optional upload records/audit records
+- cached file and directory metadata
+- upload records or audit records if needed
 
 The database should not be treated as the source of truth for file bytes. Object storage remains the source of truth for stored files.
 
@@ -195,6 +213,19 @@ Handlers and services call repository interfaces, not SQLite directly.
 ### 9.4 Migration path
 
 If SQLite later becomes limiting, keep the service layer unchanged and introduce a new repository implementation backed by PostgreSQL or another database.
+
+### 9.5 Metadata cache role
+
+The metadata cache should be treated as a first-class optimization because storage listing and metadata lookups are likely to dominate perceived latency more than HTML rendering would.
+
+Recommended uses:
+
+- cache normalized directory listings
+- cache object metadata needed for the browser view
+- support pagination and lightweight sorting
+- reduce repeated provider round-trips for common browsing flows
+
+Object storage remains the source of truth. Cache invalidation rules should stay simple for MVP.
 
 ## 10. Path and namespace model
 
@@ -275,7 +306,7 @@ Keep authorization simple in MVP, but centralize it in the service layer so it i
 ### 13.1 Runtime model
 
 - Nginx receives public traffic
-- Nginx routes storage-service requests to the Go app
+- Nginx serves static frontend assets and routes API requests to the Go app
 - Go app runs as a systemd service
 - SQLite lives on local disk
 - object data lives in cloud object storage
@@ -289,7 +320,34 @@ This design is intentionally conservative for a 2-core, 2-GB host.
 - Nginx already exists, so no additional edge service is needed
 - direct-to-object-store transfers keep memory usage predictable
 
-## 14. Suggested MVP module breakdown
+## 14. Operations and observability
+
+The MVP should include a minimal but real operational baseline.
+
+Recommended from day one:
+
+- `GET /health` for liveness
+- `GET /ready` for readiness if startup dependencies matter
+- structured logs
+- request IDs propagated from Nginx if available
+- clear error logging for provider and database failures
+
+These are low-cost additions that significantly improve maintainability.
+
+## 15. Thumbnails and previews
+
+Thumbnail generation does not need to be a mandatory MVP feature, but it should be acknowledged because image browsing is a likely use case.
+
+Recommended position:
+
+- do not make server-side thumbnail generation a hard MVP dependency
+- if image browsing quality becomes important, add lazy thumbnail generation later
+- store generated thumbnails in object storage or a small local cache
+- use an LRU cache if local thumbnail reuse becomes valuable
+
+This keeps the first release simpler while leaving a practical path for better gallery UX.
+
+## 16. Suggested MVP module breakdown
 
 Suggested internal modules:
 
@@ -303,11 +361,11 @@ Suggested internal modules:
 - `internal/repository`
 - `internal/repository/sqlite`
 - `internal/auth`
-- `internal/view`
+- `internal/observability`
 
 The exact package layout can change, but the boundary idea should remain.
 
-## 15. MVP risks and mitigations
+## 17. MVP risks and mitigations
 
 ### Risk: provider abstraction becomes too generic
 
@@ -319,13 +377,17 @@ Mitigation: confine DB access to repositories and keep schema narrow.
 
 ### Risk: frontend becomes too dynamic for templates
 
-Mitigation: use small progressive enhancement first, then move selective pages to a richer frontend later if the product demands it.
+Mitigation: keep the backend API-first, start with a static lightweight frontend, and move to React later if the product demands it.
 
 ### Risk: signed URL handling differs across providers
 
 Mitigation: keep signed URL creation fully inside provider implementations and expose normalized request/response models to the service layer.
 
-## 16. Optional client-side encryption mode
+### Risk: metadata cache becomes stale or overcomplicated
+
+Mitigation: keep object storage as source of truth, scope cache behavior to browsing needs, and avoid complex invalidation rules in MVP.
+
+## 18. Optional client-side encryption mode
 
 This section is intentionally out of MVP scope. It remains here only as future-direction guidance so later design work does not conflict with current decisions.
 
@@ -445,21 +507,23 @@ Recommended approach:
 
 This keeps the first release simpler while preserving a clean path to stronger privacy.
 
-## 17. Decisions proposed for approval
+## 19. Decisions proposed for approval
 
 Please review these MVP decisions:
 
 1. Use Go for the backend service.
 2. Reuse the existing Nginx instance as the reverse proxy.
-3. Use a lightweight template-based frontend for MVP.
+3. Use a lightweight static frontend for MVP, served by Nginx and backed by JSON APIs.
 4. Use Azure Blob as the first storage provider.
 5. Add a storage-provider abstraction now so AWS S3 and Aliyun OSS can be implemented later.
 6. Use SQLite for MVP metadata/auth state.
-7. Add a repository abstraction now so the metadata database can change later.
-8. Keep large uploads/downloads direct between browser and object storage.
-9. Keep client-side encryption out of MVP scope and revisit it later as an optional design extension.
+7. Treat file metadata cache as a core feature and keep a repository abstraction so the metadata database can change later.
+8. Use `chi` as the HTTP router/framework.
+9. Add health endpoints, structured logging, and request IDs from the beginning.
+10. Keep large uploads/downloads direct between browser and object storage.
+11. Keep client-side encryption out of MVP scope and revisit it later as an optional design extension.
 
-## 18. Next document after approval
+## 20. Next document after approval
 
 After you review and approve this MVP architecture spec, the next step should be the more detailed system design package:
 

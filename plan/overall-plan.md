@@ -15,11 +15,11 @@ Proposed approach
 
 Use the Ubuntu machine as a thin control plane and web gateway.
 
-- Frontend: lightweight template-based web UI with small JavaScript helpers
-- Backend: Go service that handles auth, listing, metadata lookup, signed URL issuance, and policy checks
+- Frontend: lightweight static web frontend served by Nginx and talking to the backend over JSON APIs; keep it simple now and compatible with a future React UI
+- Backend: Go service that handles auth, listing, metadata lookup, file metadata caching, signed URL issuance, health endpoints, and policy checks
 - Reverse proxy: existing Nginx instance
 - External storage: Azure Blob Storage first, with an internal provider interface for later S3 and OSS implementations
-- Metadata database: SQLite first, with a repository abstraction for future migration
+- Metadata database: SQLite first, with a repository abstraction for future migration and file metadata cache as a core feature
 
 Architectural direction
 
@@ -31,11 +31,11 @@ Architectural direction
 Suggested MVP stack
 
 - Backend language: Go
-- HTTP stack: Go standard library unless a framework becomes clearly useful
+- HTTP stack: `chi`
 - Reverse proxy / TLS: existing Nginx instance
-- Frontend: Go HTML templates plus light JavaScript
+- Frontend: static assets served by Nginx; start with plain TypeScript/JavaScript or htmx-style enhancement, keep React as a later UI evolution
 - Storage provider implementation: Azure Blob SDK for Go
-- Metadata database: SQLite
+- Metadata database: SQLite with a core file metadata cache
 - Deployment: systemd service on Ubuntu
 
 Important design decisions
@@ -45,17 +45,21 @@ Important design decisions
 - Represent folders as normalized virtual paths rather than relying on a provider-native directory model
 - Keep the Ubuntu host out of the hot path for large uploads/downloads
 - Do not let future encryption requirements complicate the first MVP; treat encryption as a later extension
+- Keep the frontend API-first so a future React application can replace the initial UI without changing backend contracts
+- Add health endpoints, request IDs, and structured logging from the beginning
 
 MVP capabilities
 
 - Login/logout
 - Folder browsing
 - File metadata display
+- File metadata cache backed by SQLite
 - Image preview
 - Browser-native preview for supported text/PDF files
 - Upload
 - Download
 - Signed URL generation
+- Health endpoint and structured operational logs
 
 Phases
 
@@ -70,6 +74,7 @@ Phase 2: build MVP
 - lightweight frontend
 - Azure provider
 - SQLite repository
+- file metadata cache
 - Nginx + systemd deployment
 
 Phase 3: hardening
@@ -77,6 +82,7 @@ Phase 3: hardening
 - rate limiting
 - audit logging
 - caching
+- thumbnail generation and LRU thumbnail cache if image browsing proves important
 - resumable upload if needed
 - optional client-side encryption mode with encrypted object metadata handling and adjusted preview rules
 
@@ -89,4 +95,4 @@ Phase 4: extension
 
 Initial recommendation
 
-Start with Go + existing Nginx + Azure Blob + SQLite + template-based frontend, but make both the storage backend and metadata backend replaceable behind interfaces.
+Start with Go/chi + existing Nginx + Azure Blob + SQLite metadata cache + static API-driven frontend, but make both the storage backend and metadata backend replaceable behind interfaces.

@@ -1,0 +1,13 @@
+# Backend artifacts
+Codex/backend/storage.db
+Codex/backend/bin
+Codex/backend/cover.out
+
+# Frontend artifacts
+Codex/frontend/node_modules
+Codex/frontend/dist
+
+# General
+.DS_Store
+*.log
+*.swp
